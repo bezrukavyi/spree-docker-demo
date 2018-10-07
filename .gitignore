@@ -1,0 +1,22 @@
+# Ignore bundler config.
+/.bundle
+
+# Ignore logfiles and tempfiles.
+/log/*
+/tmp/*
+!/log/.keep
+!/tmp/.keep
+
+.byebug_history
+
+# Ignore local bundle and gems
+.bundle
+/vendor/bundle
+/public/assets
+/venv
+
+# Ignore master key for decrypting credentials and more.
+/config/master.key
+
+# Ignore local credentials
+/config/credentials.local.yml
