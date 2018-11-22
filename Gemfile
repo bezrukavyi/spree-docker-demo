@@ -13,9 +13,10 @@ gem 'uglifier', '~> 4.1', '>= 4.1.18'
 gem 'coffee-rails', '~> 4.2'
 gem 'turbolinks', '~> 5.1', '>= 5.1.1'
 gem 'jbuilder', '~> 2.7'
+gem 'aws-sdk-s3', '~> 1.25'
 
 # Backgroud worker
-gem 'hiredis'
+gem 'hiredis', '~> 0.6.1'
 gem 'sidekiq', '~> 5.2'
 
 # Spree-commerce
