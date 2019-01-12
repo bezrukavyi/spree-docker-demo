@@ -1,0 +1,2 @@
+ecs-deploy==1.4.3
+awscli==1.16.38

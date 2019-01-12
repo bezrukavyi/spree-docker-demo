@@ -4,8 +4,12 @@ require 'rails/all'
 
 Bundler.require(*Rails.groups)
 
+require_relative 'secrets_env_loader'
+
 module SpreeDemo
   class Application < Rails::Application
+    SecretsEnvLoader.new.call
+
     config.to_prepare do
       # Load application's model / class decorators
       Dir.glob(File.join(File.dirname(__FILE__), "../app/**/*_decorator*.rb")) do |c|

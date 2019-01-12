@@ -1,0 +1,65 @@
+version: '3.1'
+
+# Объявим volumes:
+volumes:
+  redis:
+  postgres:
+
+services:
+  db:
+    image: postgres:9.6 # Для `Postgres` воспользуемся готовыми образом https://hub.docker.com/_/postgres
+    ports:
+      - 5428:5432 # В `ports` мы объявляем, на какой порт Host OS (нашей ноды) будет проксироваться порт из ContainerOS. Здесь мы указали, что PostgreSQL внутри контейнера` db`, которые доступен через порт `5432`, будет проксироваться на порт 5428 нашей ноды. Если порт 5428 у вас уже занят, замените на другой.
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: spreedemo_production
+    volumes:
+      - postgres:/var/lib/postgres/data # Путь к директории контейнера, содержание которой будет записано в volume и в дальнейшем переиспользовано
+
+  in_memory_store:
+    image: redis:3.2-alpine # Для `Redis` воспользуемся готовыми образом https://hub.docker.com/_/redis
+    ports:
+      - 6378:6379
+    volumes:
+      - redis:/var/lib/redis/data
+
+  server_app: &server_app # Объявим сервис для самого Spree-приложения. Поскольку Sidekiq-приложение должно содержать похожие параметры, чтобы избежать дублирования файлов конфигурации API-сервиса, создадим якорь `server_app`
+    build: .
+    tty: true # включим pseudo-tty
+    stdin_open: true # включим STDIN
+    restart: on-failure
+    environment:
+      RAILS_ENV: production
+      DB_HOST: db # Имя сервиса с Postgres-ом
+      DB_PORT: 5432
+      DB_NAME: spreedemo_production
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      REDIS_DB: "redis://in_memory_store:6379"
+      SECRET_KEY_BASE: STUB
+      DEVISE_SECRET_KEY: STUB
+    depends_on: # Указываем, от каких сервисов зависит текущий сервис. Например, `server_app` будет запущен после запуска сервиса `db`
+      - db
+      - in_memory_store
+    ports:
+      - 8000:8000
+
+  server_worker_app:
+    <<: *server_app
+    command: bundle exec sidekiq -C config/sidekiq.yml # Переопределим команду для запуска образа по умолчанию
+    depends_on:
+      - db
+      - server_app
+      - in_memory_store
+    ports:
+      - 8001:8000
+
+  web_server:
+    build: ../docker/nginx
+    environment:
+      CUSTOM_APP_VHOST: localhost
+    ports:
+      - 80:8080
+    depends_on:
+      - server_app

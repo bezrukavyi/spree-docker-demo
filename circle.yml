@@ -1,0 +1,140 @@
+app_image: &app_image
+  docker:
+    - image: circleci/ruby:2.5-node
+      environment:
+        RAILS_ENV: test
+        DB_HOST: localhost
+        DB_PORT: 5432
+        DB_NAME: spreedemo_test
+        DB_USERNAME: postgres
+        DB_PASSWORD: postgres
+        SECRET_KEY_BASE: SECRET_KEY_BASE
+        DEVISE_SECRET_KEY: DEVISE_SECRET_KEY
+
+    - image: circleci/postgres:9.6
+      environment:
+        POSTGRES_USER: postgres
+        POSTGRES_PASSWORD: postgres
+        POSTGRES_DB: spreedemo_test
+
+deploy_image: &deploy_image
+  docker:
+    - image: circleci/python:3.7
+
+caches:
+  - &bundle_cache spreedemo-bundle-v1-{{ checksum "Gemfile.lock" }}
+  - &docker_images_cache spreedemo-docker-v1-{{ checksum "Gemfile.lock" }}-{{ checksum "Dockerfile" }}
+  - &deploy_dependencies_cache spreedemo-pip-v1-{{ checksum "config/deploy/dependencies.txt" }}
+
+steps:
+  - &restore_bundle_cache
+    restore_cache:
+        name: Restore bundle cache
+        keys:
+          - *bundle_cache
+
+  - &store_bundle_cache
+    save_cache:
+      name: Store bundle cache
+      key: *bundle_cache
+      paths:
+        - vendor/bundle
+
+  - &restore_docker_images_cache
+    restore_cache:
+        name: Restore docker images cache
+        keys:
+          - *docker_images_cache
+
+  - &store_docker_images_cache
+    save_cache:
+      name: Store docker images cache
+      key: *docker_images_cache
+      paths:
+        - images
+
+  - &load_docker_image
+    run:
+      name: Load Docker image layer cache
+      command: set +o pipefail && docker load -i images/spreeproject_server_app-$CIRCLE_BRANCH.tar | true
+
+  - &save_docker_image
+    run:
+      name: Save Docker image layer cache
+      command: mkdir -p images && docker save -o images/spreeproject_server_app-$CIRCLE_BRANCH.tar spreeproject_server_app:$CIRCLE_BRANCH
+
+  - &restore_deploy_dependencies_cache
+    restore_cache:
+        name: Restore deploy dependecies
+        keys:
+          - *deploy_dependencies_cache
+
+  - &store_deploy_dependencies_cache
+    save_cache:
+      name: Store deploy dependecies
+      key: *deploy_dependencies_cache
+      paths:
+        - venv
+
+  - &bundle_install
+    run: bundle install --path vendor/bundle
+
+  - &migrate_db
+    run: bundle exec rails db:migrate
+
+  - &run_test
+    run:
+      name: Run tests
+      command: bundle exec rspec --color -f d spec
+
+  - &deploy
+    run:
+      name: Deploy
+      command: config/deploy/$CIRCLE_BRANCH.sh
+
+version: 2
+jobs:
+  build_and_test:
+    <<: *app_image
+    steps:
+      - checkout
+
+      - *restore_bundle_cache
+      - *bundle_install
+      - *store_bundle_cache
+
+      - *migrate_db
+
+      - *run_test
+
+  deploy:
+    <<: *deploy_image
+    steps:
+      - checkout
+      - setup_remote_docker
+
+      - *restore_deploy_dependencies_cache
+      - *restore_docker_images_cache
+      - *load_docker_image
+
+      - *deploy
+
+      - *save_docker_image
+      - *store_docker_images_cache
+      - *store_deploy_dependencies_cache
+
+
+workflows:
+  version: 2
+  build:
+    jobs:
+      - build_and_test
+      - deploy:
+          requires: 
+            - build_and_test
+          filters:
+            branches:
+              only:
+                - dev
+                - staging
+                - production
