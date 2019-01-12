@@ -9,6 +9,6 @@
  *= require_tree .
 */
 
-/* #spree-header {
+#spree-header {
   background-color: #3c763d;
-} */
+}
