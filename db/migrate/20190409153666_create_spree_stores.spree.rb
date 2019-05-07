@@ -19,7 +19,7 @@ class CreateSpreeStores < ActiveRecord::Migration[4.2]
         t.string :code
         t.boolean :default, default: false, null: false
 
-        t.timestamps null: false
+        t.timestamps null: false, precision: 6
       end
     end
   end
