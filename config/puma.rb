@@ -7,7 +7,7 @@ end
 if ENV['RAILS_ENV'] == 'development'
   port '3000'
 else
-  bind "tcp://#{ENV['LISTEN_ON'] || '0.0.0.0:8000'}"
+  bind "tcp://#{ENV['LISTEN_ON'] || '0.0.0.0:3000'}"
 
   workers Integer(ENV['WEB_CONCURRENCY'] || 2)
 
