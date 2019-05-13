@@ -1,0 +1,72 @@
+# Version - версия синтаксиса compose-файла. Файл Compose всегда начинается с номера версии, который указывает используемый формат файла. Это помогает гарантировать, что приложения будет работать как ожидается, так как новые функции или критические изменения постоянно добавляются в Compose.
+version: '3.1'
+
+# Volume – дисковое пространство между HostOS и ContainerOS. Проще – это папка на вашей локальной машине примонтированная внутрь контейнера.
+volumes: # Объявим volumes, которые будут доступны в сервисах
+ redis:
+ postgres:
+
+# Service - запущенный контейнер
+services: # Объявляем сервисы(контейнеры) которые будут запущены с помощью compose
+ db:
+   image: postgres:10 # В качестве образа сервиса используется официальный образ Postgresql из Docker Hub
+   expose:
+     - 5432 # Выделяем для postgres 5432-ый порт контейнера
+   environment: # Указываем список глобальных ENV-переменных внутри текущего контейнера
+     POSTGRES_USER: postgres
+     POSTGRES_PASSWORD: postgres
+     POSTGRES_DB: spreedemo_development
+   volumes:
+     - postgres:/var/lib/postgresql/data # Все данные из директории data буду ложиться в volume `postgres`
+   healthcheck:
+     test: ["CMD", "pg_isready", "-U", "postgres"] # Команда для проверки состояния сервиса
+
+ in_memory_store:
+   image: redis:4-alpine # В качестве образа сервиса используется официальный образ Redis из Docker Hub
+   expose:
+     - 6379 # Выделяем для redis 6379-ый порт контейнера
+   volumes:
+     - redis:/var/lib/redis/data
+   healthcheck:
+     test: ["CMD", "redis-cli", "-h", "localhost", "ping"]
+
+ server_app: &server_app
+   build: . # В качестве образа будет использоваться Dockerfile в текущей директории
+   command: bundle exec rails server -b 0.0.0.0 # переопределяем команду запуска контейнера
+   entrypoint: "./docker-entrypoint.sh" # указываем какую команду нужно запустить перед тем как контейнер запустится
+   volumes:
+      - .:/home/www/spreedemo # Указываем, что директория app в контейнере будет ссылаться на директорию app в Host OS (локальная нода). Таким образом, при изменение файлов из app на вашей локальной машине, все изменения так же будут применены и на контейнер с данным сервисом.
+      - /home/www/spreedemo/vendor/bundle # Исключаем попадение локальным гемов
+      - /home/www/spreedemo/public/assets # Исключаем попадение локально сгенерированых assets
+   tty: true # Открываем доступ для деббагинга контейнера
+   stdin_open: true # Открываем доступ для деббагинга контейнера
+   restart: on-failure # Перезапустить контейнер в случае ошибки
+   environment:
+     RAILS_ENV: development
+     DB_HOST: db
+     DB_PORT: 5432
+     DB_NAME: spreedemo_development
+     DB_USERNAME: postgres
+     DB_PASSWORD: postgres
+     REDIS_DB: "redis://in_memory_store:6379"
+     SECRET_KEY_BASE: STUB
+     DEVISE_SECRET_KEY: STUB
+   depends_on: # Указываем список сервисов от которых зависит текущий сервис. Текущий сервис будет запущен только после того как запустятся зависимые сервисы
+     - db
+     - in_memory_store
+   ports:
+     - 3000:3000 # Указываем что порт из контейнера будет проксироваться на порт HostOS (HostPort:ContainerPort)
+   healthcheck:
+     test: ["CMD", "curl", "-f", "http://localhost:3000"]
+
+ server_worker_app:
+   <<: *server_app # Наследуемся от сервиса server_app
+   command: bundle exec sidekiq -C config/sidekiq.yml
+   entrypoint: ''
+   ports: []
+   depends_on:
+     - db
+     - server_app
+     - in_memory_store
+   healthcheck:
+     test: ["CMD-SHELL", "ps ax | grep -v grep | grep sidekiq || exit 1"]
