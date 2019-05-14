@@ -1,0 +1,80 @@
+version: '3.1'
+
+volumes:
+  redis:
+  postgres:
+  assets:
+
+services:
+  db:
+    image: postgres:10
+    expose:
+      - 5432
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: spreedemo_staging
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+
+  in_memory_store:
+    image: redis:4-alpine
+    expose:
+      - 6379
+    volumes:
+      - redis:/var/lib/redis/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-h", "localhost", "ping"]
+
+  server_app: &server_app
+    build: .
+    command: bundle exec puma -C config/puma.rb
+    entrypoint: "./docker-entrypoint.sh"
+    volumes:
+      - assets:/home/www/spreedemo/public/assets
+      - ./config/master.key:/home/www/spreedemo/config/master.key
+    environment:
+      RAILS_ENV: staging
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: spreedemo_staging
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      REDIS_DB: "redis://in_memory_store:6379"
+      SECRET_KEY_BASE: STUB
+      DEVISE_SECRET_KEY: STUB
+    depends_on:
+      - db
+      - in_memory_store
+    expose:
+      - 3000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+
+  server_worker_app:
+    <<: *server_app
+    command: bundle exec sidekiq -C config/sidekiq.yml
+    entrypoint: ''
+    ports: []
+    depends_on:
+      - db
+      - server_app
+      - in_memory_store
+    healthcheck:
+      test: ["CMD-SHELL", "ps ax | grep -v grep | grep sidekiq || exit 1"]
+
+  web_server:
+    build: ./deploy/configs/nginx
+    volumes:
+      - assets:/home/www/spreedemo/public/assets
+    environment:
+      CUSTOM_APP_VHOST: server_app
+      STATIC_PATH: /home/www/spreedemo/public
+    ports:
+      - 80:8080
+    depends_on:
+      - server_app
+    healthcheck:
+      test: ["CMD-SHELL", "service nginx status || exit 1"]
