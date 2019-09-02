@@ -19,8 +19,9 @@ if !Rails.env.development? && !Rails.env.test?
     s3_host_name:   ENV['S3_HOST_NAME'],
     s3_region:      ENV['S3_REGION'],
     bucket:         ENV['S3_BUCKET_NAME'],
+    url: ':s3_alias_url',
+    s3_host_alias: ENV['CLOUDFRONT_DISTRIBUTION_DOMAIN'],
 
-    url:            '/spree/:class/:id/:style/:basename.:extension',
     path:           '/spree/:class/:id/:style/:basename.:extension'
   }
 
